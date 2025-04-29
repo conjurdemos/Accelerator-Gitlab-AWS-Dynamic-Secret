@@ -1,0 +1,6 @@
+# .gitignore
+
+*~
+local.env
+**/tmp/**
+**/Archive/**

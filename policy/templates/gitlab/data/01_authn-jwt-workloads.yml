@@ -1,0 +1,17 @@
+# conjur policy load -f authn-jwt-workloads.yml -b data
+- !policy
+  id: gitlab-example-apps
+  body:
+    - !group
+
+    - &hosts
+        - !host
+            # Must match the value of the jwt claim value set in token-app-property
+            # For Gitlab, we use the "namespace_path"
+            id: example-workload1
+            annotations:
+              authn-jwt/gitlab-example/ref: main
+              authn-jwt/gitlab-example/project_id: 22
+    - !grant 
+        role: !group
+        members: *hosts

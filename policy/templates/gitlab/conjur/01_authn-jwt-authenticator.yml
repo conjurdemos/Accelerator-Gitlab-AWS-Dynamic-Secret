@@ -1,0 +1,24 @@
+# create authenticator policy at, conjur/authn-jwt/{{AUTHNAME}}
+# conjur policy load -f authn-jwt-authenticator.yml -b conjur/authn-jwt
+- !policy
+  id: gitlab-example
+  body:
+    - !webservice
+    # REF: https://docs.cyberark.com/conjur-cloud/latest/en/content/integrations/gitlab.htm
+    - !variable jwks-uri
+    - !variable token-app-property
+    - !variable identity-path
+    - !variable issuer
+    # Group of apps able to use this JWT Authenticator
+    - !group apps
+    - !permit
+      role: !group apps
+      privilege: [read, authenticate]
+      resource: !webservice
+    - !webservice status
+    # Group of users who can check the status of the JWT Authenticator
+    - !group operators
+    - !permit
+      role: !group operators
+      privilege: [read]
+      resource: !webservice status

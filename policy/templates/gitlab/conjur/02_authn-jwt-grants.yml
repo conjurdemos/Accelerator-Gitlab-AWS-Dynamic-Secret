@@ -1,0 +1,7 @@
+# conjur policy load -f authn-jwt-grants.yml -b conjur/authn-jwt/gitlab-example
+- !grant
+  roles:
+    - !group apps
+  members:
+    # group created in data/01_authn-jwt-workloads.yml
+    - !group /data/gitlab-example-apps

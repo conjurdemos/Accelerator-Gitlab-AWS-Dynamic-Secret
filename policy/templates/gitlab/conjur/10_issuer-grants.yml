@@ -1,0 +1,6 @@
+# conjur policy load -f issuer-grants.yml -b conjur/issuers/gitlab-example
+- !grant
+  roles:
+    - !group delegation/consumers
+  members:
+    - !group /data/gitlab-example-apps

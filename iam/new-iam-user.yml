@@ -1,0 +1,134 @@
+---
+- name: Create AWS IAM user with sts:GetFederationToken and sts:AssumeRole permissions
+  hosts: localhost
+  gather_facts: false
+  vars:
+    new_user_name: DEMO-new-user
+    new_role_name: DEMO-new-role
+    dir_for_creds: ./DEMO-new-user
+
+  tasks:
+    - name: Generate a random string
+      ansible.builtin.set_fact:
+        random_string: "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_letters', 'digits', '!@%^*()-+']) }}"
+      register: generated
+    - name: Generate a Random password
+      ansible.builtin.set_fact:
+        # IAM user password must be at least 8 characters long,
+        # include at least one of each: lowercase, uppercase, number, and non-alphanumeric characters,
+        # and cannot be reused from the last three passwords.
+        password: "Fi{{ generated.ansible_facts.random_string }}1!"
+      register: generated_password
+
+    - name: Display access key and secret key
+      ansible.builtin.debug:
+        msg: "Generated password: {{ generated_password.ansible_facts.password }}"
+
+    - name: Write user creds
+      ansible.builtin.copy:
+        content: |
+          NEW_USER_NAME="{{ new_user_name }}"
+          NEW_USER_PASS="{{ generated_password.ansible_facts.password }}"
+        dest: "{{ dir_for_creds }}/new-user-creds.txt"
+        mode: '0600'
+
+    - name: Create IAM user
+      amazon.aws.iam_user:
+        state: present
+        name: "{{ new_user_name }}"
+        password: "{{ generated_password.ansible_facts.password }}"
+        aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+        aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+        password_reset_required: false
+        wait: true
+        wait_timeout: 15
+      register: new_iam_user
+
+    - name: Attach policy to IAM user
+      amazon.aws.iam_policy:
+        state: present
+        iam_type: user
+        iam_name: "{{ new_iam_user.user.user_name }}"
+        aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+        aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+        policy_name: sts_get_federation_token_assume_role_policy
+        policy_json: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "sts:GetFederationToken",
+                  "sts:AssumeRole"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+
+    - name: Create access key for IAM user
+      amazon.aws.iam_access_key:
+        user_name: "{{ new_user_name }}"
+        state: present
+      register: iam_access_key
+
+    - name: Display access key and secret key
+      ansible.builtin.debug:
+        msg: "Access Key: {{ iam_access_key.access_key_id }}, Secret Key: {{ iam_access_key.secret_access_key }}"
+
+    - name: Write AWS access key and secret key to file
+      ansible.builtin.copy:
+        content: |
+          NEW_AWS_ACCESS_KEY_ID="{{ iam_access_key.access_key_id }}"
+          NEW_AWS_SECRET_ACCESS_KEY="{{ iam_access_key.secret_access_key }}"
+        dest: "{{ dir_for_creds }}/new-user-aws-creds.txt"
+        mode: '0600'
+
+    - name: Debug IAM user ARN
+      ansible.builtin.debug:
+        msg: "IAM User ARN: {{ new_iam_user.user.arn }}"
+
+    - name: Pause for 15 seconds to wait for IAM User to fully materialize
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Check IAM user info
+      amazon.aws.iam_user_info:
+        user_name: "{{ new_user_name }}"
+      register: iam_user_info
+
+    - name: IAM user info - visual check for user existence
+      ansible.builtin.debug:
+        msg: "IAM user {{ new_user_name }} response user info: {{ iam_user_info.iam_users }}"
+
+
+    - name: Create IAM role
+      amazon.aws.iam_role:
+        name: "{{ new_role_name }}"
+        aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+        aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+        # this is the trust-policy, eg. allow this user to assume this role
+        assume_role_policy_document: >
+          {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "AWS": "{{ new_iam_user.user.arn }}"
+                  },
+                  "Action": "sts:AssumeRole",
+                  "Condition": {}
+                }
+              ]
+          }
+      register: new_iam_role
+
+    - name: Write User and Role Info
+      ansible.builtin.copy:
+        content: |
+          NEW_ROLE_ARN="{{ new_iam_role.iam_role.arn }}"
+          NEW_USER_ARN="{{ new_iam_user.user.arn }}"
+        dest: "{{ dir_for_creds }}/new-user-aws-info.txt"
+        mode: '0600'
