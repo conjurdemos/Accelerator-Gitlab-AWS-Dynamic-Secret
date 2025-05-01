@@ -61,7 +61,7 @@ items=("Finished"
 
 echo "Select the 'Finished' item when you are done selecting the claims."
 selected_items=()
-until  [ $item == "Finished" ]; do
+until  [ "$item" = "Finished" ]; do
     echo "Please select an item (select Finished when done):"
     select item in "${items[@]}"; do
     if [[ -n "$item" ]]; then
